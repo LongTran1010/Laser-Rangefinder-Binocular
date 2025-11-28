@@ -6,13 +6,17 @@
 //#include "TF02-Pro.h"        // TF02ProDriver
 #include "TC22.h"          // TC22Driver
 #include <esp_task_wdt.h>
+#include "ConfigWS.h"
 
 #define TRIGGER_PIN 25
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-const char* mqtt_server = "192.168.90.50";
+ConfigWS wfconf("ESP32_setup_AP", "12345678");
+Config wifiConfig;
+
+const char* mqtt_server = "192.168.88.52";
 //const char* mqtt_server = "172.20.10.3";
 const int mqtt_port = 1883;
 const char* mqtt_topic_sub = "thesis/tc22/log";
@@ -68,15 +72,14 @@ static float computeFPS() {
 }
 
 void connectWiFi() {
-  WiFi.mode(WIFI_STA);
   display.setWiFiStatus(WIFI_SSID, false);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting to WiFi...");
+  //Serial.print("Connecting to WiFi...");
   while (WiFi.status() != WL_CONNECTED) {
     vTaskDelay(pdMS_TO_TICKS(500));
-    Serial.print(".");
+    //Serial.print(".");
   }
-  Serial.println("\nWiFi connected!");
+  //Serial.println("\nWiFi connected!");
   display.setWiFiStatus(WIFI_SSID, true);
   display.setSystemError(0); //Xóa lỗi WiFi nếu có
 }
@@ -85,22 +88,22 @@ void reconnectMQTT() {
   client.setServer(mqtt_server, mqtt_port);
   while (!client.connected()) {
     if(WiFi.status() != WL_CONNECTED){
-      Serial.println("Wi-Fi lost, reconnecting...");
+      //Serial.println("Wi-Fi lost, reconnecting...");
       display.setWiFiStatus(WIFI_SSID, false);
       display.setSystemError(20); //Lỗi WiFi
       connectWiFi();
     }
-    Serial.print("Connecting to MQTT...");
+    //Serial.print("Connecting to MQTT...");
     if (client.connect("ESP32_Client")) {
-      Serial.println("Connected!");
+      //Serial.println("Connected!");
       client.subscribe(mqtt_topic_status);
-      Serial.println("[MQTT] Subscribed to topic: " + String(mqtt_topic_status)); 
+      //Serial.println("[MQTT] Subscribed to topic: " + String(mqtt_topic_status)); 
       client.publish(mqtt_topic_status, "TC22 logger online");
       display.setSystemError(0); //wifi + MQTT OK
     }else{
-      Serial.print("Failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" retrying in 5s...");
+      //Serial.print("Failed, rc=");
+      //Serial.print(client.state());
+      //Serial.println(" retrying in 5s...");
       display.setSystemError(21); //Lỗi MQTT
       vTaskDelay(pdMS_TO_TICKS(5000));
     }
@@ -136,15 +139,23 @@ void publishMeasurementMQTT(const Measurement& m, float ema_m, float fps) {
 
 void setup() {
   Serial.begin(115200);
-
+  //WiFi.disconnect(true, true); // Xóa WiFi cũ, xóa config trong NVS
+  delay(2000);
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
   // TFT UI
   display.begin();
   display.setMaxRangeMeters(800.0f); //Max range 800m
   display.setSmoothing(0.25f); // Set EMA ở 0.25
   display.setStaleTimeoutMs(1000);
-  
-  connectWiFi();
+  if(!wfconf.ensureWiFi(wifiConfig, 15000)){
+    Serial.println("Failed to connect to WiFi and get config.");
+    //Xử lý khi không kết nối được WiFi
+    //Ví dụ: Khởi động lại thiết bị hoặc vào chế độ AP để cấu hình lại
+    while(true) vTaskDelay(pdMS_TO_TICKS(1000));
+  }else{
+    display.setWiFiStatus(wifiConfig.ssid.c_str(), true);
+  } 
+  //connectWiFi();
   client.setServer(mqtt_server, mqtt_port);
   reconnectMQTT();
 
@@ -208,7 +219,7 @@ void loop(){
         //Đo liên tục
         float fps = computeFPS();
 
-        Serial.printf("Start parse frame,%lu\n", (unsigned long)m.t_ms); //Điểm bắt đầu tính độ trễ end--to-end (in trước khi lọc)
+        //Serial.printf("Start parse frame,%lu\n", (unsigned long)m.t_ms); //Điểm bắt đầu tính độ trễ end--to-end (in trước khi lọc)
         display.update(m, fps);           // cập nhật số đo + overlay FPS/Status
 
         float ema = display.getFilter();
@@ -220,7 +231,7 @@ void loop(){
           fps);
 
         publishMeasurementMQTT(m, ema, fps); //update 14/11/2025
-        Serial.printf("render TFT,%lu\n", (unsigned long)millis()); //Điểm kết thúc tính độ trễ end--to-end (in ngay sau khi vẽ xong TFT)
+        //Serial.printf("render TFT,%lu\n", (unsigned long)millis()); //Điểm kết thúc tính độ trễ end--to-end (in ngay sau khi vẽ xong TFT)
       } 
     }else if(!targetlocked){
       // Không đưa mẫu lỗi vào EMA; chỉ cập nhật overlay
@@ -254,7 +265,7 @@ void loop(){
     bool havingRestartsLeft = (tc22RestartCount < TC22_MAX_RESTARTS);
 
     if(tooLongNo_OK && canRestart && havingRestartsLeft){
-      Serial.println("No MEAS_OK for a while, restarting TC22...");
+      //Serial.println("No MEAS_OK for a while, restarting TC22...");
       tc22LastRestartMs = now;
       tc22RestartCount++;
       lrf.stop();

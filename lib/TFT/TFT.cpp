@@ -1,4 +1,5 @@
 #include "TFT.h"
+#include <WiFi.h>
 
 //------ Khởi tạo và cấu hình TFT -------
 
@@ -42,12 +43,45 @@ void TFTDistance::setStaleTimeoutMs(uint32_t ms) { staleTimeoutMs_ = ms; }
 
 //Cập nhật số đo (cm) -> (m) + trạng thái hợp lệ
 void TFTDistance::updateDistanceMeters(float m, bool valid) {
+  //lọc cơ bản, loại các giá trị <3m hoặc invalid.
   if (valid && m < TC22_BLIND_M) valid = false;
+  //mất tín hiệu lâu thì reset hiển thị, còn 1-2 mẫu thì kệ đỡ nhấp nháy màn.
+  if(!valid){
+    paintDistanceUI();
+    drawOverlay();
+    return;
+  }
+  //----------Thuật toán GATING-----------
   if(valid){ //Nếu dữ liệu hợp lệ
+    if (!isnan(distEMA_m_)) {
+    float delta = abs(m - distEMA_m_);
+    // Nếu sự thay đổi quá lớn (lớn hơn 10m) -> Có thể là nhiễu do rung tay
+      if(delta > GATE_THRESHOLD){
+        rejectCount++;
+        // Nếu chưa đủ 5 lần liên tiếp -> bỏ qua mẫu này (coi là nhiễu)
+        if (rejectCount < MAX_REJECT) {
+          // Giữ nguyên giá trị cũ, không cập nhật EMA
+          // Có thể return luôn hoặc chỉ vẽ lại overlay
+          drawOverlay(); 
+          return; 
+        } else {
+          // Nếu đã 5 lần liên tiếp khác biệt -> MỤC TIÊU MỚI (người dùng chuyển hướng đo)
+          // Reset bộ lọc để bắt kịp giá trị mới ngay lập tức
+          distEMA_m_ = m;   
+          // Reset buffer Median
+          for(int i=0; i<5; i++) buff_[i] = m;
+          
+          rejectCount = 0;// Reset bộ đếm
+        }
+      } else {
+        // Nếu thay đổi nhỏ (hợp lý) -> Reset bộ đếm lỗi
+        rejectCount = 0;
+      }
+    }
+    //----Lọc Median + EMA----
     if(length_ < 5) length_++;
     buff_[idx_] = m;
     idx_ = (idx_ + 1) % 5;
-
     // Lấy median từ buffer
     float med = (length_ < 5) ? m : median5();
     // Áp dụng EMA trên median
@@ -217,15 +251,16 @@ void TFTDistance::drawOverlay() {
   if(measErrorCode){
     tft_.setCursor(xRight, yErr);
     tft_.setTextColor(C_RED, C_BLACK);
-    tft_.print("TC22-E");
+    tft_.print("[TC22-E");
     tft_.print(measErrorCode);
+    tft_.print("]");
   }
 
   int ySysErr = yErr + 12;
   if(systemErrorCode){
     tft_.setCursor(xRight, ySysErr);
     tft_.setTextColor(C_RED, C_BLACK);
-    tft_.print(" SYSTEM-E");
+    tft_.print("SYSTEM-E");
     tft_.print(systemErrorCode);
   }
 }

@@ -35,9 +35,9 @@ public:
       tft_(pins.cs, pins.dc, pins.rst) {} //Hardware SPI, tham chiếu hằng
 
   void begin();                                            // khởi tạo SPI + vẽ khung
-  void updateDistanceCm(uint16_t dist_cm, bool valid){
-    updateDistanceMeters(dist_cm / 100.0f, valid);
-  };     // cập nhật số đo (cm) + trạng thái hợp lệ
+  // void updateDistanceCm(uint16_t dist_cm, bool valid){
+  //   updateDistanceMeters(dist_cm / 100.0f, valid);
+  // };     // cập nhật số đo (cm) + trạng thái hợp lệ
 
   //update 24/10
   void updateDistanceMeters(float dist_m, bool valid);     // cập nhật số đo (m) + trạng thái hợp lệ
@@ -75,6 +75,10 @@ private:
   //layout động (tính theo width/height sau khi begin)
   int BAR_X_, BAR_Y_, BAR_W_, BAR_H_;
   int HEADER_H_ = 42, MARGIN_ = 10, GAP_ = 18;
+  //update 26/11/2025
+  uint8_t rejectCount = 0; //đếm lần chặn
+  const uint8_t MAX_REJECT = 5; //ngưỡng chặn trc khi nhận giá trị mới
+  const float GATE_THRESHOLD = 10.0f; //ngưỡng chênh cho phép giữa 2 lần đo.
   //update 17/10/2025
   //Thêm median lọc nhiễu xung quanh EMA
   float buff_[5]; uint8_t length_ = 0, idx_ = 0;

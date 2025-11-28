@@ -10,7 +10,6 @@
 //      Distance unit is dm (decimetre). Convert to metres: m = dist_dm / 10.0f
 //  - CRC = (sum of first N-1 bytes) & 0xFF
 //
-
 class TC22Driver {
 public:
   TC22Driver(HardwareSerial& port = Serial2, int rxPin = 16, int txPin = 17)
@@ -32,6 +31,8 @@ public:
   void stop()            { sendStartStop(/*start=*/false,/*times=*/0); }
 
 
+
+
   // Non-blocking; call often in loop().
   // Returns true when a measurement frame (valid or invalid) was parsed.
   bool poll(Measurement& out) {
@@ -39,7 +40,7 @@ public:
       uint8_t b = port_.read();
       switch (st_) {
         case 0: // chờ 0xFB
-          if (b == 0xFB) { buf_[0] = b; st_ = 1; t0_ = millis(); Serial.printf("Start RX,%lu\n", (unsigned long)t0_);}
+          if (b == 0xFB) { buf_[0] = b; st_ = 1; t0_ = millis(); /*Serial.printf("Start RX,%lu\n", (unsigned long)t0_);*/}
           break;
         case 1: // chờ 0x03
           if (b == 0x03) { buf_[1] = b; idx_ = 2; st_ = 2; }
