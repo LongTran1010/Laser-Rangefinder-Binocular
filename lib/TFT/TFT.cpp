@@ -36,6 +36,7 @@ void TFTDistance::setSmoothing(float alpha) {
   if (alpha < 0.0f) alpha = 0.0f;
   if (alpha > 1.0f) alpha = 1.0f;
   alpha_ = alpha;
+  filter_.setAlpha(alpha);
 }
 
 //Giới hạn thời gian dữ liệu cũ
@@ -51,48 +52,21 @@ void TFTDistance::updateDistanceMeters(float m, bool valid) {
     drawOverlay();
     return;
   }
-  //----------Thuật toán GATING-----------
-  if(valid){ //Nếu dữ liệu hợp lệ
-    if (!isnan(distEMA_m_)) {
-    float delta = abs(m - distEMA_m_);
-    // Nếu sự thay đổi quá lớn (lớn hơn 10m) -> Có thể là nhiễu do rung tay
-      if(delta > GATE_THRESHOLD){
-        rejectCount++;
-        // Nếu chưa đủ 5 lần liên tiếp -> bỏ qua mẫu này (coi là nhiễu)
-        if (rejectCount < MAX_REJECT) {
-          // Giữ nguyên giá trị cũ, không cập nhật EMA
-          // Có thể return luôn hoặc chỉ vẽ lại overlay
-          drawOverlay(); 
-          return; 
-        } else {
-          // Nếu đã 5 lần liên tiếp khác biệt -> MỤC TIÊU MỚI (người dùng chuyển hướng đo)
-          // Reset bộ lọc để bắt kịp giá trị mới ngay lập tức
-          distEMA_m_ = m;   
-          // Reset buffer Median
-          for(int i=0; i<5; i++) buff_[i] = m;
-          
-          rejectCount = 0;// Reset bộ đếm
-        }
-      } else {
-        // Nếu thay đổi nhỏ (hợp lý) -> Reset bộ đếm lỗi
-        rejectCount = 0;
-      }
-    }
-    //----Lọc Median + EMA----
-    if(length_ < 5) length_++;
-    buff_[idx_] = m;
-    idx_ = (idx_ + 1) % 5;
-    // Lấy median từ buffer
-    float med = (length_ < 5) ? m : median5();
-    // Áp dụng EMA trên median
-    if(isnan(distEMA_m_)){
-        distEMA_m_ = med;
-    }else{                   
-        distEMA_m_ = alpha_ * med
-         + (1.0f - alpha_) * distEMA_m_;
-    }
-    lastUpdateMs_ = millis();
+  //cập nhật bộ lọc
+  float filt = filter_.update(m, valid);
+  if(!filter_.hasValue()){
+    //Chưa có giá trị hợp lệ thì hiển thị ---.--m
+    tft_.setTextColor(ILI9341_RED, ILI9341_BLACK);
+    tft_.setCursor(MARGIN_ + 8, 25 + 2*8 + 10 );
+    tft_.print("---.- m");
+    drawOverlay();
+    return;
   }
+
+  //Đã có giá trị sau lọc
+  float d_m = filt;
+  lastUpdateMs_ = millis();
+
   paintDistanceUI(); //Vẽ số + thanh mức
   drawOverlay(); // Update cho header về FPS và status
 }
@@ -188,24 +162,24 @@ void TFTDistance::printDistanceValue(const String& s, uint16_t color) {
 // Vẽ số + thanh mức theo trạng thái hiện tại (hiển thị stale khi mất dữ liệu)
 void TFTDistance::paintDistanceUI() {
   bool stale = (millis() - lastUpdateMs_) > staleTimeoutMs_;
-
-  if (isnan(distEMA_m_) || stale) {
+  float d = filter_.value();
+  if (isnan(d) || stale) {
     printDistanceValue(String("---.- m"), C_RED);
     tft_.fillRect(BAR_X_+1, BAR_Y_+1, BAR_W_-2, BAR_H_-2, C_BLACK);
     tft_.drawRect(BAR_X_, BAR_Y_, BAR_W_, BAR_H_, C_ORANGE);
     return;
   }
 
-  String s = String(distEMA_m_, 1) + " m";
+  String s = String(d, 1) + " m";
   printDistanceValue(s, C_YELLOW);
 
-  float r = distEMA_m_ / maxRange_m_;
+  float r = d / maxRange_m_;
   if (r < 0) r = 0; if (r > 1) r = 1;
   int fillW = (int)(r * (BAR_W_ - 2));
 
   tft_.fillRect(BAR_X_+1, BAR_Y_+1, BAR_W_-2, BAR_H_-2, C_BLACK);
   tft_.fillRect(BAR_X_+1, BAR_Y_+1, fillW,      BAR_H_-2, C_GREEN);
-  tft_.drawRect(BAR_X_, BAR_Y_, BAR_W_, BAR_H_, (distEMA_m_ >= maxRange_m_) ? C_RED : C_ORANGE);
+  tft_.drawRect(BAR_X_, BAR_Y_, BAR_W_, BAR_H_, (d >= maxRange_m_) ? C_RED : C_ORANGE);
 }
 
 // Overlay: hiện FPS + Status trong header (góc phải)

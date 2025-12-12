@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include "MeasurementTypes.h"
 
+
 // TC22 UART driver
 //  - UART 115200 8N1, TTL 3.3V.
 //  - Start/Stop command: MsgType=0xFA, MsgCode=0x01, PayLoadLen=0x04,

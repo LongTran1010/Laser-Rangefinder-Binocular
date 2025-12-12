@@ -23,12 +23,12 @@ const char* mqtt_topic_sub = "thesis/tc22/log";
 const char* mqtt_topic_status = "thesis/tc22/status";
 
 //button
-static bool btnWasLow = false;
-static uint32_t btnTs = 0;
-auto btnLow = [&](){ return digitalRead(TRIGGER_PIN) == LOW; };
-auto btnFalling = [&](){
+auto btnLow = [](){ return digitalRead(TRIGGER_PIN) == LOW; };
+auto btnFalling = [](){
   bool nowLow = btnLow();
   uint32_t now = millis();
+  static bool btnWasLow = false;
+  static uint32_t btnTs = 0;
   bool edge = (nowLow && !btnWasLow && (now - btnTs > 30)); // debounce ~30ms
   if (nowLow != btnWasLow) { btnWasLow = nowLow; btnTs = now; }
   return edge;
@@ -37,9 +37,12 @@ auto btnFalling = [&](){
 bool singleShot = false, targetlocked = false;
 uint32_t lockedTime = 0;
 float lockedValue = 0;
+
 // TFT
 TFTPins pins{5,21,19,18,23,-1};  // CS=5, DC=21, RST=19, SCK=18, MOSI=23, MISO=-1
 TFTDistance display(pins);
+
+DistanceFilter logFilterNoGate(0.25f, 10000.0f, 255); //bộ lọc phụ trợ, ko gating
 
 static uint32_t tc22LastFrameMs = 0; // thời gian nhận mẫu TC22 cuối cùng
 static uint32_t tc22LastOkMs      = 0;   // lần cuối nhận MEAS_OK
@@ -71,71 +74,82 @@ static float computeFPS() {
   return fps;
 }
 
-void connectWiFi() {
-  display.setWiFiStatus(WIFI_SSID, false);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  //Serial.print("Connecting to WiFi...");
-  while (WiFi.status() != WL_CONNECTED) {
-    vTaskDelay(pdMS_TO_TICKS(500));
-    //Serial.print(".");
-  }
-  //Serial.println("\nWiFi connected!");
-  display.setWiFiStatus(WIFI_SSID, true);
-  display.setSystemError(0); //Xóa lỗi WiFi nếu có
-}
+// void connectWiFi() {
+//   display.setWiFiStatus(WIFI_SSID, false);
+//   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+//   //Serial.print("Connecting to WiFi...");
+//   while (WiFi.status() != WL_CONNECTED) {
+//     vTaskDelay(pdMS_TO_TICKS(500));
+//     //Serial.print(".");
+//   }
+//   //Serial.println("\nWiFi connected!");
+//   display.setWiFiStatus(WIFI_SSID, true);
+//   display.setSystemError(0); //Xóa lỗi WiFi nếu có
+// }
 
-void reconnectMQTT() {
-  client.setServer(mqtt_server, mqtt_port);
-  while (!client.connected()) {
-    if(WiFi.status() != WL_CONNECTED){
-      //Serial.println("Wi-Fi lost, reconnecting...");
-      display.setWiFiStatus(WIFI_SSID, false);
-      display.setSystemError(20); //Lỗi WiFi
-      connectWiFi();
-    }
-    //Serial.print("Connecting to MQTT...");
-    if (client.connect("ESP32_Client")) {
-      //Serial.println("Connected!");
-      client.subscribe(mqtt_topic_status);
-      //Serial.println("[MQTT] Subscribed to topic: " + String(mqtt_topic_status)); 
-      client.publish(mqtt_topic_status, "TC22 logger online");
-      display.setSystemError(0); //wifi + MQTT OK
-    }else{
-      //Serial.print("Failed, rc=");
-      //Serial.print(client.state());
-      //Serial.println(" retrying in 5s...");
-      display.setSystemError(21); //Lỗi MQTT
-      vTaskDelay(pdMS_TO_TICKS(5000));
-    }
-  }
-}
+// void reconnectMQTT() {
+//   client.setServer(mqtt_server, mqtt_port);
+//   while (!client.connected()) {
+//     if(WiFi.status() != WL_CONNECTED){
+//       //Serial.println("Wi-Fi lost, reconnecting...");
+//       display.setWiFiStatus(wifiConfig.ssid.c_str(), false);
+//       display.setSystemError(20); //Lỗi WiFi
+//       connectWiFi();
+//     }
+//     //Serial.print("Connecting to MQTT...");
+//     if (client.connect("ESP32_Client")) {
+//       //Serial.println("Connected!");
+//       client.subscribe(mqtt_topic_status);
+//       //Serial.println("[MQTT] Subscribed to topic: " + String(mqtt_topic_status)); 
+//       client.publish(mqtt_topic_status, "TC22 logger online");
+//       display.setSystemError(0); //wifi + MQTT OK
+//     }else{
+//       //Serial.print("Failed, rc=");
+//       //Serial.print(client.state());
+//       //Serial.println(" retrying in 5s...");
+//       display.setSystemError(21); //Lỗi MQTT
+//       vTaskDelay(pdMS_TO_TICKS(5000));
+//     }
+//   }
+// }
 
-void publishMeasurementMQTT(const Measurement& m, float ema_m, float fps) {
-  static bool init = false;
-  static uint32_t t0_ms = 0;
-  static uint32_t last_ms = 0;
+// void publishMeasurementMQTT(const Measurement& m, float dist_ema_med_m, float dist_gated_m, float fps) {
+//   static bool init = false;
+//   static uint32_t t0_ms = 0;
+//   static uint32_t last_ms = 0;
 
-  if (!init) {
-    t0_ms = m.t_ms;
-    last_ms = m.t_ms;
-    init = true;
-  }
+//   if (!init) {
+//     t0_ms = m.t_ms;
+//     last_ms = m.t_ms;
+//     init = true;
+//   }
 
-  float t_rel_s = (m.t_ms - t0_ms) / 1000.0f;
-  float dt_s    = (m.t_ms - last_ms) / 1000.0f;
-  last_ms       = m.t_ms;
+//   float t_rel_s = (m.t_ms - t0_ms) / 1000.0f;
+//   float dt_s    = (m.t_ms - last_ms) / 1000.0f;
+//   last_ms       = m.t_ms;
 
-  if (!client.connected()) return;  // không làm gì nếu mất MQTT
+//   if (!client.connected()) return;  // không làm gì nếu mất MQTT
 
-  char payload[200];
-  // JSON khớp với các cột bạn đang phân tích: distance_m, distance_filt_m, t_rel_s, dt_s, fps
-  snprintf(payload, sizeof(payload),
-           "{\"distance_m\":%.3f,\"distance_filt_m\":%.3f,"
-           "\"t_rel_s\":%.3f,\"dt_s\":%.3f,\"fps\":%.2f}",
-           m.dist_m, ema_m, t_rel_s, dt_s, fps);
+//   char payload[256];
+//   // JSON khớp với các cột bạn đang phân tích: distance_m, distance_filt_m, t_rel_s, dt_s, fps
+//   snprintf(payload, sizeof(payload),
+//            "{"
+//              "\"distance_raw_m\":%.3f,"
+//              "\"distance_medema_m\":%.3f,"
+//              "\"distance_gated_m\":%.3f,"
+//              "\"t_rel_s\":%.3f,"
+//              "\"dt_s\":%.3f,"
+//              "\"fps\":%.2f"
+//            "}",
+//            m.dist_m,
+//            dist_ema_med_m,
+//            dist_gated_m,
+//            t_rel_s,
+//            dt_s,
+//            fps);
 
-  client.publish(mqtt_topic_sub, payload);
-}
+//   client.publish(mqtt_topic_sub, payload);
+// }
 
 void setup() {
   Serial.begin(115200);
@@ -145,19 +159,20 @@ void setup() {
   // TFT UI
   display.begin();
   display.setMaxRangeMeters(800.0f); //Max range 800m
-  display.setSmoothing(0.25f); // Set EMA ở 0.25
+  //display.setSmoothing(0.25f); // Set EMA ở 0.25
   display.setStaleTimeoutMs(1000);
-  if(!wfconf.ensureWiFi(wifiConfig, 15000)){
-    Serial.println("Failed to connect to WiFi and get config.");
-    //Xử lý khi không kết nối được WiFi
-    //Ví dụ: Khởi động lại thiết bị hoặc vào chế độ AP để cấu hình lại
-    while(true) vTaskDelay(pdMS_TO_TICKS(1000));
-  }else{
-    display.setWiFiStatus(wifiConfig.ssid.c_str(), true);
-  } 
-  //connectWiFi();
-  client.setServer(mqtt_server, mqtt_port);
-  reconnectMQTT();
+  // wfconf.clearSavedWiFi();
+  // if(!wfconf.ensureWiFi(wifiConfig, 15000)){
+  // Serial.println("Failed to connect to WiFi and get config.");
+  //   //Xử lý khi không kết nối được WiFi
+  //   //Ví dụ: Khởi động lại thiết bị hoặc vào chế độ AP để cấu hình lại
+  //   while(true) vTaskDelay(pdMS_TO_TICKS(1000));
+  // }else{
+  //   display.setWiFiStatus(wifiConfig.ssid.c_str(), true);
+  // } 
+  //  connectWiFi();
+  //client.setServer(mqtt_server, mqtt_port);
+  //reconnectMQTT();
 
 // #if defined(USE_TF02_PRO)
 //   // TF02-Pro
@@ -185,12 +200,12 @@ void setup() {
 
 void loop(){
   esp_task_wdt_reset(); // đặt lại đồng hồ giám sát
-  static uint32_t lastMQTTCheck = 0;
-  if (!client.connected() && millis() - lastMQTTCheck > 5000) {
-    lastMQTTCheck = millis();
-    reconnectMQTT();
-  }
-  client.loop();
+  // static uint32_t lastMQTTCheck = 0;
+  // if (!client.connected() && millis() - lastMQTTCheck > 5000) {
+  //  lastMQTTCheck = millis();
+  //   reconnectMQTT();
+  // }
+  // client.loop();
 #if defined(USE_TC22)
   if (!targetlocked && !singleShot && btnFalling()) {
     singleShot = true;
@@ -222,15 +237,18 @@ void loop(){
         //Serial.printf("Start parse frame,%lu\n", (unsigned long)m.t_ms); //Điểm bắt đầu tính độ trễ end--to-end (in trước khi lọc)
         display.update(m, fps);           // cập nhật số đo + overlay FPS/Status
 
-        float ema = display.getFilter();
+        float dist_gated = display.getFilter(); //median+EMA+Gating
+        float dist_ema_med = logFilterNoGate.update(m.dist_m, true); //EMA phụ trợ
         Serial.printf("%lu,%.3f,%.3f,%u,%.1f\n",
           (unsigned long)m.t_ms, 
           m.dist_m, 
-          ema, 
+          dist_ema_med, 
+          dist_gated,
+          (unsigned) m.status,
           -1, //ko trả strength
           fps);
 
-        publishMeasurementMQTT(m, ema, fps); //update 14/11/2025
+        //publishMeasurementMQTT(m, dist_ema_med, dist_gated, fps); //update 14/11/2025
         //Serial.printf("render TFT,%lu\n", (unsigned long)millis()); //Điểm kết thúc tính độ trễ end--to-end (in ngay sau khi vẽ xong TFT)
       } 
     }else if(!targetlocked){

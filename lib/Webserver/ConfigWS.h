@@ -26,6 +26,8 @@ public:
   // 2) Nếu chưa có / connect fail -> mở AP + webserver cho user cấu hình,
   bool ensureWiFi(Config& outConfig,
                   uint32_t connectTimeoutMs = 15000);
+  void clearSavedWiFi();
+
 
 private:
   const char* _AP_ssid;

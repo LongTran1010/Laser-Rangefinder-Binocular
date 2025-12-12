@@ -1,5 +1,6 @@
 #include "ConfigWS.h"
-
+#include <WiFi.h>
+#include "esp_wifi.h"
 
 const char* ConfigWS::PREF_NAMESPACE = "wifi_config";
 const char* ConfigWS::PREF_KEY_SSID   = "ssid";
@@ -217,6 +218,19 @@ bool ConfigWS::connectSTA(uint32_t timeoutMs) {
     return false;
   }
   Serial.println();
+}
+
+void ConfigWS::clearSavedWiFi() {
+    esp_wifi_restore();   // Xóa tất cả WiFi đã lưu
+    delay(100);
+    WiFi.disconnect(true, true); // clear luôn cả RAM + Flash
+    prefs.begin(PREF_NAMESPACE, false);
+    prefs.remove(PREF_KEY_SSID);
+    prefs.remove(PREF_KEY_PASS);
+    prefs.end();
+    cfg.ssid = "";
+    cfg.pass = "";
+    SuccessConnect = false;
 }
 
 void ConfigWS::startAP() {

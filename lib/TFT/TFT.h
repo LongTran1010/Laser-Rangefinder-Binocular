@@ -5,6 +5,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ILI9341.h> 
 #include <MeasurementTypes.h>
+#include "DistanceFilter.h"
 // RGB565 colors
 #define C_BLACK   0x0000
 #define C_WHITE   0xFFFF
@@ -54,7 +55,7 @@ public:
   void setFPS(float fps);                       // vẽ/ghi nhớ FPS
   void update(const Measurement& m, float fps); // tiện ích gộp
   //update 17/10/2025
-  float getFilter() const { return distEMA_m_; }    // lấy hệ số EMA hiện tại
+  float getFilter() const { return filter_.value(); }    // lấy hệ số EMA hiện tại
   //update 14/11/2025
   void setWiFiStatus(const char* SSID, bool connected); // hiển thị trạng thái WiFi
 private:
@@ -63,10 +64,8 @@ private:
   Adafruit_ILI9341 tft_;
 
   //trạng thái hiển thị, các mặc định
-  float    distEMA_m_      = NAN;     // giá trị đã làm mượt (m)
+  //float    distEMA_m_      = NAN;     // giá trị đã làm mượt (m)
   float    alpha_          = 0.25f;   // hệ số EMA
-  float    maxRange_m_     = 800.0f;   // thang hiển thị
-  uint32_t lastUpdateMs_   = 0, staleTimeoutMs_ = 1000;
   //mới
   float     fps_           = 0.0f;
   MeasStatus status_       = MEAS_TIMEOUT;
@@ -76,27 +75,31 @@ private:
   int BAR_X_, BAR_Y_, BAR_W_, BAR_H_;
   int HEADER_H_ = 42, MARGIN_ = 10, GAP_ = 18;
   //update 26/11/2025
-  uint8_t rejectCount = 0; //đếm lần chặn
-  const uint8_t MAX_REJECT = 5; //ngưỡng chặn trc khi nhận giá trị mới
-  const float GATE_THRESHOLD = 10.0f; //ngưỡng chênh cho phép giữa 2 lần đo.
+  //uint8_t rejectCount = 0; //đếm lần chặn
+  //const uint8_t MAX_REJECT = 5; //ngưỡng chặn trc khi nhận giá trị mới
+  //const float GATE_THRESHOLD = 10.0f; //ngưỡng chênh cho phép giữa 2 lần đo.
   //update 17/10/2025
   //Thêm median lọc nhiễu xung quanh EMA
-  float buff_[5]; uint8_t length_ = 0, idx_ = 0;
-  float median5() const {
-    //sort (insertion sort) 
-    float a[5];
-    for (int i = 0; i < 5; i++) a[i] = buff_[i];
-    for (int i = 1; i < 5; i++) {
-      float k = a[i];
-      int j = i - 1;
-      while (j >= 0 && a[j] > k) {
-        a[j + 1] = a[j];
-        j--;
-      }
-      a[j + 1] = k;
-    }
-    return a[2];
-  }
+  //float buff_[5]; uint8_t length_ = 0, idx_ = 0;
+  // float median5() const {
+  //   //sort (insertion sort) 
+  //   float a[5];
+  //   for (int i = 0; i < 5; i++) a[i] = buff_[i];
+  //   for (int i = 1; i < 5; i++) {
+  //     float k = a[i];
+  //     int j = i - 1;
+  //     while (j >= 0 && a[j] > k) {
+  //       a[j + 1] = a[j];
+  //       j--;
+  //     }
+  //     a[j + 1] = k;
+  //   }
+  //   return a[2];
+  // }
+  //update 8/12/2025
+  DistanceFilter filter_; // bộ lọc khoảng cách
+  float    maxRange_m_     = 800.0f;   // thang hiển thị
+  uint32_t lastUpdateMs_   = 0, staleTimeoutMs_ = 1000;
   //update 14/11/2025
   String wifiSSID_ = "";
   bool wifiConnected_ = false;
