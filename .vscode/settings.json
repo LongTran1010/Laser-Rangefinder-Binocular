@@ -1,5 +1,5 @@
 {
-    "cmake.sourceDirectory": "D:/Thesis-GD1/Module/lib/ArduinoJson/src",
+    "cmake.sourceDirectory": "D:/Thesis/Module/lib/ArduinoJson/src",
     "files.associations": {
         "string_view": "cpp"
     }

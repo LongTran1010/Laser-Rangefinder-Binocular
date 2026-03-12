@@ -1,3 +1,4 @@
+//sensor/driver/parser
 #pragma once
 #include <Arduino.h>
 #include "MeasurementTypes.h"
@@ -10,7 +11,8 @@
 //  - Measurement report: [FB 03 BrdId 04 DataValid_L DataValid_H Dist_L Dist_H CRC]
 //      Distance unit is dm (decimetre). Convert to metres: m = dist_dm / 10.0f
 //  - CRC = (sum of first N-1 bytes) & 0xFF
-//
+
+
 class TC22Driver {
 public:
   TC22Driver(HardwareSerial& port = Serial2, int rxPin = 16, int txPin = 17)

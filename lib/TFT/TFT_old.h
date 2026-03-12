@@ -17,7 +17,7 @@
 
 //Pin map cho ILI9341 (mặc định VSPI)
 struct TFTPins {
-  int8_t cs   ;   // Chip Select
+  int8_t cs   ;  // Chip Select
   int8_t dc   ;  // Data/Command ---- A0
   int8_t rst  ;  // Reset
   int8_t sck  ;  // SPI SCK  (VSPI)
