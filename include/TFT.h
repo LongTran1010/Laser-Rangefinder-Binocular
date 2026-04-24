@@ -4,7 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ILI9341.h>
 #include "MeasurementTypes.h"
-#include "TrackerTypes.h"
+#include "TrackerTypes_v2.h"
 
 // RGB565 colors
 #define C_BLACK   0x0000

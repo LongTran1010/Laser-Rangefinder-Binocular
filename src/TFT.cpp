@@ -242,7 +242,7 @@ void TFTDistance::drawOverlay(){
   switch (trackState_) {
     case TRACK_SEARCHING: tc = C_YELLOW; tTxt = "SEARCH"; break;
     case TRACK_CANDIDATE: tc = C_CYAN;   tTxt = "CAND";   break;
-    case TRACK_LOCKED:    tc = C_GREEN;  tTxt = "LOCK";   break;
+    case TRACK_STABLE:    tc = C_GREEN;  tTxt = "STABLE";   break;
     case TRACK_LOST:      tc = C_RED;    tTxt = "LOST";   break;
     default:              tc = C_YELLOW; tTxt = "SEARCH"; break;
   }
