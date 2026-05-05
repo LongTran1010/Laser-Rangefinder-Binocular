@@ -2,7 +2,7 @@
 #include "MeasurementTypes.h"
 #include "TC22.h"
 #include "Controller.h"
-
+#include "AlphaBetaPresets.h"
 #include <WiFi.h>
 #include <esp_task_wdt.h>
 
@@ -188,7 +188,16 @@ void mqttPublishLog(const char* payload) {
   (void)payload;
 #endif
 }
+// =====================
+// setup
+// =====================
+static constexpr EstimatorMode kEstimatorMode = EST_ALPHABETA;
+// nếu muốn chạy baseline thì đổi thành EST_BASELINE
 
+static constexpr AbPreset kAbPreset = AbPreset::PRESET_A;
+
+// gắn test_id cho dễ log CSV
+static constexpr uint16_t kTestId = 1002;
 // =====================
 // setup
 // =====================
@@ -204,8 +213,16 @@ void setup() {
   // Khởi động lõi đo trước
   app.begin();
 
+  // Chọn mode tracker
+  app.setEstimatorMode(kEstimatorMode);
+  // Nếu đang chạy alpha-beta thì áp preset
+  if (kEstimatorMode == EST_ALPHABETA) {
+    AlphaBetaConfig abCfg = makeAlphaBetaPreset(kAbPreset);
+    app.setAlphaBetaConfig(abCfg);
+  }
+
   // Đổi mã này trước mỗi bài test nếu cần
-  app.setTestID(0);
+  app.setTestID(kTestId);
 
 #if ENABLE_MQTT_LOG
   WiFi.mode(WIFI_STA);
