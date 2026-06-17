@@ -26,6 +26,7 @@ void TFTDistance::begin(){
 
   drawStatic();
   drawOverlay();
+  drawRate();
   DrawWiFiStatus();
 }
 
@@ -38,6 +39,7 @@ void TFTDistance::setMaxRangeMeters(float m){
   drawStatic();
   paintDistanceUI();
   drawOverlay();
+  drawRate();
   DrawWiFiStatus();
 }
 
@@ -97,11 +99,47 @@ void TFTDistance::setDisplayedDistance(float dist_m, bool valid){
   drawOverlay();
 }
 
+void TFTDistance::setRangeRate(float rate_mps, bool valid){
+  rangeRateMps_ = rate_mps;
+  // Chi hien thi khi co estimate hop le va gia tri huu han
+  rateValid_ = valid && isfinite(rate_mps);
+  drawRate();
+}
+
 void TFTDistance::render(const TrackerOutput& out){
-  setStatus(out.measStatus);
-  setFPS(out.fps);
-  setTrackState(out.trackState);
-  setDisplayedDistance(out.filteredDistanceM, out.hasEstimate);
+  // ===== Cap nhat toan bo state, KHONG ve tung phan =====
+  // (truoc day moi setter tu goi drawOverlay -> render goi drawOverlay 4-5 lan,
+  //  gay cham va backlog frame. Nay gom lai, ve 1 lan duy nhat.)
+  status_ = out.measStatus;
+  switch (status_) {
+    case MEAS_OK:        measErrorCode_ = 0;  break;
+    case MEAS_TIMEOUT:   measErrorCode_ = 10; break;
+    case MEAS_NO_SIGNAL: measErrorCode_ = 11; break;
+    case MEAS_BAD_CRC:   measErrorCode_ = 12; break;
+    case MEAS_BAD_FRAME: measErrorCode_ = 13; break;
+    default:             measErrorCode_ = 0;  break;
+  }
+  fps_        = out.fps;
+  trackState_ = out.trackState;
+
+  // Khoang cach: chi cap nhat khi hop le; invalid thi giu gia tri cu
+  float d = out.filteredDistanceM;
+  bool  distValid = out.hasEstimate && !isnan(d) && (d >= TC22_BLIND_M);
+  if (distValid) {
+    displayedDistanceM_ = d;
+    lastUpdateMs_ = millis();
+  }
+
+  // Van toc chi co o mode alpha-beta (baseline tra ve NAN)
+  rangeRateMps_ = out.rangeRateMps;
+  rateValid_    = out.hasEstimate
+                  && (out.estimatorMode == EST_ALPHABETA)
+                  && isfinite(out.rangeRateMps);
+
+  // ===== Ve MOT lan duy nhat =====
+  paintDistanceUI();
+  drawOverlay();
+  drawRate();
   DrawWiFiStatus();
 }
 
@@ -268,6 +306,50 @@ void TFTDistance::drawOverlay(){
     tft_.print("SYSTEM-E");
     tft_.print(systemErrorCode_);
   }
+}
+
+// -------------------- Range rate (velocity) --------------------
+
+void TFTDistance::drawRate(){
+  // Vi tri: ngay duoi nhan thanh muc (bar labels)
+  const int RATE_SIZE = 2;
+  const int rateY = BAR_Y_ + BAR_H_ + 12 + (2 * 8) + 8;  // duoi label bar
+  const int rateH = RATE_SIZE * 8;
+
+  // Xoa vung cu
+  tft_.fillRect(MARGIN_, rateY - 2, tft_.width() - 2 * MARGIN_, rateH + 6, C_BLACK);
+
+  tft_.setTextSize(RATE_SIZE);
+  tft_.setCursor(MARGIN_ + 2, rateY);
+
+  if (!rateValid_) {
+    // Mode baseline hoac chua co estimate -> khong co van toc
+    tft_.setTextColor(0x8410, C_BLACK);   // xam
+    tft_.print("TOC DO: --");
+    return;
+  }
+
+  // Quy uoc: rate < 0 -> khoang cach giam -> muc tieu lai gan
+  //          rate > 0 -> khoang cach tang -> muc tieu ra xa
+  const float DEADBAND = 0.15f;   // m/s, nguong coi nhu dung yen
+  uint16_t color;
+  const char* arrow;
+  if (fabsf(rangeRateMps_) < DEADBAND) {
+    color = C_WHITE;
+    arrow = " ~";          // dung yen
+  } else if (rangeRateMps_ < 0.0f) {
+    color = C_GREEN;
+    arrow = " <<";         // lai gan
+  } else {
+    color = C_ORANGE;
+    arrow = " >>";         // ra xa
+  }
+
+  tft_.setTextColor(color, C_BLACK);
+  tft_.print("V:");
+  tft_.print(rangeRateMps_, 2);
+  tft_.print(" m/s");
+  tft_.print(arrow);
 }
 
 // -------------------- WiFi --------------------

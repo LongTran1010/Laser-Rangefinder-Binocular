@@ -1,7 +1,7 @@
 #pragma once
 #include <Arduino.h>
-#include "Tc22Protocol.h"
-
+#include "TC22/Tc22Protocol.h"
+//Máy trạng thái byte-by-byte để parse khung TC22 từ UART
 class Tc22Parser{
 public:
     static const size_t FRAME_LEN = 9;
@@ -14,6 +14,7 @@ public:
     // lấy frame ra (reset flag)
     Tc22Frame popFrame();
     void reset();
+    // giải mã payload theo little-endian
     void setLittleEndianPayload(bool le);
 private:
     uint8_t buf_[FRAME_LEN]{};

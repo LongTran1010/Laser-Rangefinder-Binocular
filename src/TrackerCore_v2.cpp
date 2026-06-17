@@ -11,18 +11,20 @@ TrackerCore::TrackerCore(const TrackerConfig& cfg)
 
 void TrackerCore::configure(const TrackerConfig& cfg){
     cfg_ = cfg;
-
-    // cập nhật baseline filter
     baselineFilter_ = DistanceFilter(cfg.alpha, cfg.gateThresholdM, cfg.maxReject);
-
-    // đồng bộ gate cho alpha-beta nếu muốn dùng chung threshold
-    abCfg_.gateThresholdM = cfg.gateThresholdM;
+    // KHONG override gate alpha-beta tu baseline.
     abTracker_.configure(abCfg_);
 }
 
 void TrackerCore::setEstimatorMode(EstimatorMode mode){
     mode_ = mode;
     out_.estimatorMode = mode_;
+    // Doi mode -> reset state ca hai estimator de A/B benchmark sach
+    baselineFilter_.reset();
+    abTracker_.reset();
+    out_.hasEstimate = false;
+    out_.filteredDistanceM = NAN;
+    clearAlphaBetaFields();
 }
 
 void TrackerCore::setAlphaBetaConfig(const AlphaBetaConfig& cfg){
@@ -33,18 +35,17 @@ void TrackerCore::setAlphaBetaConfig(const AlphaBetaConfig& cfg){
 void TrackerCore::reset(){
     baselineFilter_.reset();
     abTracker_.reset();
-
     out_ = TrackerOutput{};
-    out_.measStatus = MEAS_TIMEOUT;
-    out_.trackState = TRACK_SEARCHING;
+    out_.measStatus    = MEAS_TIMEOUT;
+    out_.trackState    = TRACK_SEARCHING;
     out_.estimatorMode = mode_;
 }
 
 void TrackerCore::clearAlphaBetaFields(){
-    out_.rangeRateMps = NAN;
+    out_.rangeRateMps       = NAN;
     out_.predictedDistanceM = NAN;
-    out_.residualM = NAN;
-    out_.rejectedByGate = false;
+    out_.residualM          = NAN;
+    out_.rejectedByGate     = false;
 }
 
 void TrackerCore::updateTrackStateOnValid(){
@@ -64,78 +65,111 @@ void TrackerCore::updateTrackStateOnInvalid(){
 }
 
 void TrackerCore::updateMeasurement(const Measurement& m, float fps){
-    out_.fps = fps;
-    out_.measStatus = m.status;
-    out_.sampleTimeMs = m.t_ms;
+    out_.fps           = fps;
+    out_.measStatus    = m.status;
+    out_.sampleTimeMs  = m.t_ms;
     out_.estimatorMode = mode_;
 
     if (m.status == MEAS_OK){
-        out_.rawDistanceM = m.dist_m;
-        out_.lastGoodTimeMs = m.t_ms;
+        out_.rawDistanceM        = m.dist_m;
+        out_.lastGoodTimeMs      = m.t_ms;
         out_.consecutiveValids++;
         out_.consecutiveInvalids = 0;
 
-        if (mode_ == EST_BASELINE){
-            baselineFilter_.update(m.dist_m, true);
-            const float est = baselineFilter_.value();
-            out_.filteredDistanceM = est;
-            out_.hasEstimate = isfinite(est);
-            clearAlphaBetaFields();
-        }else{
-            AlphaBetaOutput ab = abTracker_.update(m, fps);
-            out_.filteredDistanceM = ab.estimateM;
-            out_.rangeRateMps = ab.rateMps;
-            out_.predictedDistanceM = ab.predictedM;
-            out_.residualM = ab.residualM;
-            out_.rejectedByGate = ab.rejectedByGate;
-            out_.hasEstimate = ab.hasEstimate;
+        switch (mode_){
+            case EST_BASELINE: {
+                baselineFilter_.update(m.dist_m, true);
+                const float est = baselineFilter_.value();
+                out_.filteredDistanceM = est;
+                out_.hasEstimate       = isfinite(est);
+                clearAlphaBetaFields();
+                break;
+            }
+            case EST_ALPHABETA: {
+                AlphaBetaOutput ab = abTracker_.update(m, fps);
+                out_.filteredDistanceM   = ab.estimateM;
+                out_.rangeRateMps        = ab.rateMps;
+                out_.predictedDistanceM  = ab.predictedM;
+                out_.residualM           = ab.residualM;
+                out_.rejectedByGate      = ab.rejectedByGate;
+                out_.hasEstimate         = ab.hasEstimate;
+                break;
+            }
+            case EST_RAW_ONLY:
+            default: {
+                out_.filteredDistanceM = m.dist_m;
+                out_.hasEstimate       = isfinite(m.dist_m);
+                clearAlphaBetaFields();
+                break;
+            }
         }
-
         updateTrackStateOnValid();
     }else{
         out_.rawDistanceM = NAN;
         out_.consecutiveInvalids++;
         out_.consecutiveValids = 0;
 
-        if (mode_ == EST_BASELINE){
-            out_.filteredDistanceM = baselineFilter_.value();
-            out_.hasEstimate = isfinite(out_.filteredDistanceM);
-            clearAlphaBetaFields();
-        }else{
-            AlphaBetaOutput ab = abTracker_.notifyInvalid(m.t_ms, fps);
-            out_.filteredDistanceM = ab.estimateM;
-            out_.rangeRateMps = ab.rateMps;
-            out_.predictedDistanceM = ab.predictedM;
-            out_.residualM = ab.residualM;
-            out_.rejectedByGate = ab.rejectedByGate;
-            out_.hasEstimate = ab.hasEstimate;
+        switch (mode_){
+            case EST_BASELINE: {
+                out_.filteredDistanceM = baselineFilter_.value();
+                out_.hasEstimate       = isfinite(out_.filteredDistanceM);
+                clearAlphaBetaFields();
+                break;
+            }
+            case EST_ALPHABETA: {
+                AlphaBetaOutput ab = abTracker_.notifyInvalid(m.t_ms, fps);
+                out_.filteredDistanceM  = ab.estimateM;
+                out_.rangeRateMps       = ab.rateMps;
+                out_.predictedDistanceM = ab.predictedM;
+                out_.residualM          = ab.residualM;
+                out_.rejectedByGate     = ab.rejectedByGate;
+                out_.hasEstimate        = ab.hasEstimate;
+                break;
+            }
+            case EST_RAW_ONLY:
+            default: {
+                out_.filteredDistanceM = NAN;
+                out_.hasEstimate       = false;
+                clearAlphaBetaFields();
+                break;
+            }
         }
-
         updateTrackStateOnInvalid();
     }
 }
 
 void TrackerCore::notifyNoFrame(uint32_t nowMs){
-    out_.measStatus = MEAS_TIMEOUT;
-    out_.sampleTimeMs = nowMs;
-    out_.rawDistanceM = NAN;
+    out_.measStatus      = MEAS_TIMEOUT;
+    out_.sampleTimeMs    = nowMs;
+    out_.rawDistanceM    = NAN;
     out_.consecutiveInvalids++;
     out_.consecutiveValids = 0;
-    out_.estimatorMode = mode_;
-    
-    if (mode_ == EST_BASELINE){
-        out_.filteredDistanceM = baselineFilter_.value();
-        out_.hasEstimate = isfinite(out_.filteredDistanceM);
-        clearAlphaBetaFields();
-    } else {
-        AlphaBetaOutput ab = abTracker_.notifyInvalid(nowMs, out_.fps);
-        out_.filteredDistanceM = ab.estimateM;
-        out_.rangeRateMps = ab.rateMps;
-        out_.predictedDistanceM = ab.predictedM;
-        out_.residualM = ab.residualM;
-        out_.rejectedByGate = ab.rejectedByGate;
-        out_.hasEstimate = ab.hasEstimate;
-    }
+    out_.estimatorMode   = mode_;
 
+    switch (mode_){
+        case EST_BASELINE: {
+            out_.filteredDistanceM = baselineFilter_.value();
+            out_.hasEstimate       = isfinite(out_.filteredDistanceM);
+            clearAlphaBetaFields();
+            break;
+        }
+        case EST_ALPHABETA: {
+            AlphaBetaOutput ab = abTracker_.notifyInvalid(nowMs, out_.fps);
+            out_.filteredDistanceM  = ab.estimateM;
+            out_.rangeRateMps       = ab.rateMps;
+            out_.predictedDistanceM = ab.predictedM;
+            out_.residualM          = ab.residualM;
+            out_.rejectedByGate     = ab.rejectedByGate;
+            out_.hasEstimate        = ab.hasEstimate;
+            break;
+        }
+        case EST_RAW_ONLY:
+        default: {
+            out_.filteredDistanceM = NAN;
+            out_.hasEstimate       = false;
+            clearAlphaBetaFields();
+            break;
+        }
+    }
     updateTrackStateOnInvalid();
 }

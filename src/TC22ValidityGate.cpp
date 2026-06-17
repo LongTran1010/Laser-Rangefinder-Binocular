@@ -1,5 +1,6 @@
-#include "Tc22ValidityGate.h"
+#include "TC22/Tc22ValidityGate.h"
 
+//======= Tầng kiểm tra tính hợp lệ của phép đo TC22 sau khi đã parse khung =======
 Tc22Measurement Tc22ValidityGate::evaluate(const Tc22Frame& f){
     Tc22Measurement m{};
     m.t_ms = f.t_ms;

@@ -1,5 +1,5 @@
 #pragma once
-#include "Tc22Protocol.h"
+#include "TC22/Tc22Protocol.h"
 
 class Tc22ValidityGate{
 public:

@@ -2,9 +2,9 @@
 #pragma once
 #include <Arduino.h>
 #include "MeasurementTypes.h"
-#include "Tc22Protocol.h"
-#include "Tc22Parser.h"
-#include "Tc22ValidityGate.h"
+#include "TC22/Tc22Protocol.h"
+#include "TC22/Tc22Parser.h"
+#include "TC22/Tc22ValidityGate.h"
 
 
 // TC22 UART driver

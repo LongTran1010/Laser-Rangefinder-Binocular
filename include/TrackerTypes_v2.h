@@ -10,12 +10,13 @@ enum TrackState : uint8_t{
 };
 
 enum EstimatorMode : uint8_t{
-    EST_BASELINE = 0,
-    EST_ALPHABETA = 1
+    EST_BASELINE  = 0,   // Gating + Median(5) + EMA (firmware giai doan 1)
+    EST_ALPHABETA = 1,   // Alpha-beta tracker (giai doan 2)
+    EST_RAW_ONLY  = 2    // Khong loc - chi pass-through raw, dung cho fair benchmark
 };
 
 struct TrackerConfig{
-    // baseline cũ
+    // baseline cu
     float alpha = 0.25f;
     float gateThresholdM = 10.0f;
     uint8_t maxReject = 5;
@@ -31,7 +32,7 @@ struct TrackerOutput{
     float rawDistanceM = NAN;
     float filteredDistanceM = NAN;
 
-    // field thật cho alpha-beta
+    // field that cho alpha-beta
     float rangeRateMps = NAN;
     float predictedDistanceM = NAN;
     float residualM = NAN;

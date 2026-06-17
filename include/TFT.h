@@ -42,6 +42,7 @@ public:
   void setFPS(float fps);
   void setTrackState(TrackState s);
   void setDisplayedDistance(float dist_m, bool valid);
+  void setRangeRate(float rate_mps, bool valid);   // van toc noi suy (alpha-beta)
 
   void render(const TrackerOutput& out);
   void setWiFiStatus(const char* SSID, bool connected);
@@ -52,6 +53,8 @@ private:
 
   float displayedDistanceM_ = NAN;
   float fps_ = 0.0f;
+  float rangeRateMps_ = NAN;       // van toc noi suy
+  bool  rateValid_ = false;        // chi hien thi khi mode alpha-beta
   MeasStatus status_ = MEAS_TIMEOUT;
   TrackState trackState_ = TRACK_SEARCHING;
 
@@ -73,4 +76,5 @@ private:
   void printDistanceValue(const String& s, uint16_t color);
   void paintDistanceUI();
   void drawOverlay();
+  void drawRate();
 };
