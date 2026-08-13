@@ -1,0 +1,2 @@
+n_samples,mean_fps,baseline_mean_rise_s,baseline_mean_settle_s,ab_mean_rise_s,ab_mean_settle_s,sensor_reject_ratio,ab_tracker_gate_reject_ratio
+409,4.813031784841076,0.2362950839380387,35.364888888888885,0.21078056419534583,36.15188888888889,0.1882640586797066,0.33985330073349634
