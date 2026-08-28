@@ -18,7 +18,7 @@
 
 class TC22Driver{
 public:
-  TC22Driver(HardwareSerial& port = Serial2, int rxPin = 16, int txPin = 17)
+  TC22Driver(HardwareSerial& port = Serial2, int rxPin = 17, int txPin = 16)
   : port_(port), rx_(rxPin), tx_(txPin){}
 
   bool begin(uint32_t baud = 115200){

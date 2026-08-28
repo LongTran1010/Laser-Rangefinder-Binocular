@@ -32,14 +32,37 @@ public:
   void setTestID(uint16_t id) { testId_ = id; }
   void setPublishLogFn(PublishLogFn fn) { logger_.setPublishFn(fn); }
 
-  void setEstimatorMode(EstimatorMode mode) { tracker_.setEstimatorMode(mode); }
+  // Proposal 3: setEstimatorMode() CHI select/reset estimator, KHONG dung cache.
+  // Config va cache metadata do cac setter rieng (setAlphaBetaConfig,
+  // setBaselineConfig) dam nhiem. Tuan thu Single Responsibility.
+  void setEstimatorMode(EstimatorMode mode) {
+    tracker_.setEstimatorMode(mode);
+    // Neu chuyen sang RAW_ONLY: reset cache ve NaN vi khong con config nao.
+    // Neu chuyen sang BASELINE/ALPHABETA: cache duoc set boi setBaselineConfig
+    // hoac setAlphaBetaConfig sau do (order-of-call matters).
+    if (mode == EST_RAW_ONLY) {
+      cfgAlphaCached_     = NAN;
+      cfgBetaCached_      = NAN;
+      cfgGateCached_      = NAN;
+      cfgMinDtSCached_    = NAN;
+      cfgMaxRejectCached_ = 0;
+    }
+  }
   void setAlphaBetaConfig(const AlphaBetaConfig& cfg) {
     tracker_.setAlphaBetaConfig(cfg);
-    // Cache vao Controller de Logger co the publish kem moi message
     cfgAlphaCached_     = cfg.alpha;
     cfgBetaCached_      = cfg.beta;
     cfgGateCached_      = cfg.gateThresholdM;
     cfgMinDtSCached_    = cfg.minDtS;
+    cfgMaxRejectCached_ = cfg.maxReject;
+  }
+  // Proposal 3: dung setter rieng cho baseline thay vi hardcode trong setEstimatorMode.
+  void setBaselineConfig(const BaselineConfig& cfg) {
+    tracker_.setBaselineConfig(cfg);
+    cfgAlphaCached_     = cfg.emaLambda;    // lambda EMA (log field share voi alpha)
+    cfgBetaCached_      = NAN;               // baseline khong co beta
+    cfgGateCached_      = cfg.gateThresholdM;
+    cfgMinDtSCached_    = NAN;               // baseline khong co min_dt
     cfgMaxRejectCached_ = cfg.maxReject;
   }
   // Set preset ID (0xFF = N/A, dung 0 = A_EMA_LIKE ... 5 = F_HANDHELD)

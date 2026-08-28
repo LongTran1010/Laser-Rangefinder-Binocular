@@ -36,10 +36,12 @@ public:
 
     // Xoá trạng thái bộ lọc (ví dụ khi đổi mode / reset hệ thống)
     void reset() {
-        distEMA_m_   = NAN;
-        length_      = 0;
-        idx_         = 0;
-        rejectCount_ = 0;
+        distEMA_m_        = NAN;
+        length_           = 0;
+        idx_              = 0;
+        rejectCount_      = 0;
+        lastGateRejected_ = false;
+        lastReinit_       = false;
     }
 
     // Cập nhật với 1 mẫu mới.
@@ -54,6 +56,12 @@ public:
     // Đã có giá trị hợp lệ chưa?
     bool hasValue() const { return !isnan(distEMA_m_); }
 
+    // Review#1: FSM ngoai can biet mau vua update co bi gate reject
+    // (dropped/held) hay khong. Reset sau moi update() ke tiep.
+    bool lastGateRejected() const { return lastGateRejected_; }
+    // True khi update() reinit (target-switch sau maxReject lien tiep).
+    bool lastReinit() const { return lastReinit_; }
+
 private:
     // Tham số
     float   alpha_         = 0.25f;   // hệ số EMA
@@ -66,6 +74,10 @@ private:
     uint8_t length_      = 0;         // số phần tử hợp lệ hiện có (<=5)
     uint8_t idx_         = 0;         // index vòng tròn
     uint8_t rejectCount_ = 0;         // bộ đếm gating
+
+    // Review#1: expose FSM signal cho TrackerCore
+    bool    lastGateRejected_ = false; // update() gan nhat da bi gate chan?
+    bool    lastReinit_       = false; // update() gan nhat da reinit target-switch?
 
     float median5_() const;
 };

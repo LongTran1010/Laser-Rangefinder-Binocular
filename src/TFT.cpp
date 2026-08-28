@@ -110,6 +110,10 @@ void TFTDistance::render(const TrackerOutput& out){
   // ===== Cap nhat toan bo state, KHONG ve tung phan =====
   // (truoc day moi setter tu goi drawOverlay -> render goi drawOverlay 4-5 lan,
   //  gay cham va backlog frame. Nay gom lai, ve 1 lan duy nhat.)
+  //
+  // Fix #6 v2: LUON update state (khong skip). Chi skip DRAW khi overlay visible.
+  // Truoc do return som lam mat cap nhat displayedDistanceM_/fps_/lastUpdateMs_,
+  // dan den sau overlay hide se hien state cu (stale timeout gia).
   status_ = out.measStatus;
   switch (status_) {
     case MEAS_OK:        measErrorCode_ = 0;  break;
@@ -137,9 +141,15 @@ void TFTDistance::render(const TrackerOutput& out){
                   && isfinite(out.rangeRateMps);
 
   // ===== Ve MOT lan duy nhat =====
-  paintDistanceUI();
-  drawOverlay();
-  drawRate();
+  // Fix #6 v2: chi skip DRAW main area khi overlay hien.
+  // State da duoc update o tren -> sau khi overlay hide, paintDistanceUI() ve
+  // ngay du lieu MOI, khong bi stale.
+  if (!overlayVisible_ && !flashVisible_) {
+    paintDistanceUI();
+    drawOverlay();
+    drawRate();
+  }
+  // Status bar (WiFi/Preset/BAT/Lock) van duoc ve xuyen suot
   DrawWiFiStatus();
 }
 
@@ -237,17 +247,19 @@ void TFTDistance::paintDistanceUI() {
 // -------------------- Overlay --------------------
 
 void TFTDistance::drawOverlay(){
+  // Fix #5 v2: DICH XUONG duoi status bar (y=28) de khong xoa Battery/Lock icon.
+  // Status bar top 28px danh cho PRESET/WIFI/BAT/LOCK - overlay stat phai duoi y>=30.
   const int OVER_SIZE = 1;
   int rightBlockW = 120;
   int xRight = tft_.width() - rightBlockW - 4;
 
-  int yFPS   = 4;
+  int yFPS   = 32;                  // truoc: 4 -> overlap status bar
   int yStat  = yFPS + 12;
   int yTrack = yStat + 12;
   int yErr   = yTrack + 12;
   int ySys   = yErr + 12;
 
-  // Clear overlay zone
+  // Clear overlay zone (chi vung stat, khong dung status bar top)
   tft_.fillRect(xRight, yFPS, rightBlockW, 60, C_BLACK);
 
   // FPS
@@ -355,10 +367,12 @@ void TFTDistance::drawRate(){
 // -------------------- WiFi --------------------
 
 void TFTDistance::DrawWiFiStatus(){
-  const int16_t x = 4;
-  const int16_t y = 4;
-  const int16_t w = 150;
-  const int16_t h = 10;
+  // Fix #5 v2: doi vi tri WiFi de KHONG overlap voi PRESET (x=4..96).
+  // Layout status bar: PRESET (4..96) | WIFI (100..188) | BAT (192..276) | LOCK (290..312).
+  const int16_t x = 100;
+  const int16_t y = 6;
+  const int16_t w = 88;
+  const int16_t h = 12;
 
   tft_.fillRect(x, y, w, h, ILI9341_BLACK);
 
@@ -379,4 +393,196 @@ void TFTDistance::DrawWiFiStatus(){
     tft_.print(wifiSSID_);
     tft_.print(" ERR");
   }
+}
+
+// ============================================================
+//  UX v2: preset name, battery, lock icon, overlay, flash
+// ============================================================
+
+// --- Layout constants cho status bar + info bar ---
+// Fix #5: bo cuc lai de tranh overlap voi WiFi (x=4..154) va tinh trang bar cu.
+// Chia status bar 320px thanh 4 vung: PRESET (0-100), WIFI (100-190),
+// BAT (190-280), LOCK (290-315).
+static constexpr int STATUS_BAR_Y      = 0;
+static constexpr int STATUS_BAR_H      = 28;
+static constexpr int PRESET_X          = 4;
+static constexpr int PRESET_Y          = 6;
+static constexpr int PRESET_W          = 92;   // PRESET: 4..96
+static constexpr int BAT_X             = 192;  // BAT: 192..276 (khong overlap WIFI)
+static constexpr int BAT_Y             = 6;
+static constexpr int BAT_W             = 80;
+static constexpr int LOCK_X            = 290;  // LOCK: 290..314
+static constexpr int LOCK_Y            = 6;
+static constexpr int LOCK_W            = 22;
+static constexpr int LOCK_H            = 16;
+
+static constexpr int INFOBAR_H         = 32;
+static constexpr int OVERLAY_X         = 30;
+static constexpr int OVERLAY_Y         = 70;
+static constexpr int OVERLAY_W         = 260;
+static constexpr int OVERLAY_H         = 100;
+
+// -----------------------------------------------------------
+// setPresetInfo — luu state + redraw preset name + info bar
+// -----------------------------------------------------------
+void TFTDistance::setPresetInfo(uint8_t id, const char* name, const char* use_case,
+                                 float alpha, float beta, float gate_m) {
+  presetId_       = id;
+  presetName_     = (name != nullptr) ? String(name) : String("");
+  presetUseCase_  = (use_case != nullptr) ? String(use_case) : String("");
+  presetAlpha_    = alpha;
+  presetBeta_     = beta;
+  presetGate_     = gate_m;
+  drawPresetName();
+  drawPresetInfoBar();
+}
+
+// -----------------------------------------------------------
+// setBatteryPercent — chi redraw khi % thay doi
+// -----------------------------------------------------------
+void TFTDistance::setBatteryPercent(int pct) {
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+  if (pct == batteryPct_) return;   // khong doi thi bo qua
+  batteryPct_ = pct;
+  drawBatteryIcon();
+}
+
+// -----------------------------------------------------------
+// setLockIcon — hien/an icon LOCK
+// -----------------------------------------------------------
+void TFTDistance::setLockIcon(bool locked) {
+  if (locked == locked_) return;
+  locked_ = locked;
+  drawLockIcon();
+}
+
+// -----------------------------------------------------------
+// showPresetOverlay — hien popup preset 2s giua man hinh
+// -----------------------------------------------------------
+void TFTDistance::showPresetOverlay(uint32_t duration_ms) {
+  overlayVisible_  = true;
+  overlayHideAtMs_ = millis() + duration_ms;
+  drawPresetOverlay();
+}
+
+// -----------------------------------------------------------
+// showFlash — hien text ngan ("LOCKED", "SAVED"...)
+// -----------------------------------------------------------
+void TFTDistance::showFlash(const char* msg, uint32_t duration_ms) {
+  flashMsg_       = (msg != nullptr) ? String(msg) : String("");
+  flashVisible_   = true;
+  flashHideAtMs_  = millis() + duration_ms;
+  drawFlash();
+}
+
+// -----------------------------------------------------------
+// updateOverlay — poll trong loop() de auto-hide
+// -----------------------------------------------------------
+void TFTDistance::updateOverlay() {
+  uint32_t now = millis();
+  if (overlayVisible_ && now >= overlayHideAtMs_) {
+    hideOverlay();
+  }
+  if (flashVisible_ && now >= flashHideAtMs_) {
+    hideFlash();
+  }
+}
+
+// ============================================================
+//  Private draw methods
+// ============================================================
+
+// PRESET name goc trai status bar
+void TFTDistance::drawPresetName() {
+  tft_.fillRect(PRESET_X, PRESET_Y, PRESET_W, 16, C_BLACK);
+  tft_.setCursor(PRESET_X, PRESET_Y);
+  tft_.setTextColor(C_YELLOW, C_BLACK);
+  tft_.setTextSize(1);
+  tft_.print("PRESET:");
+  tft_.print(presetName_);
+}
+
+// BAT % o giua status bar (icon + so)
+void TFTDistance::drawBatteryIcon() {
+  tft_.fillRect(BAT_X, BAT_Y, BAT_W, 16, C_BLACK);
+  tft_.setCursor(BAT_X, BAT_Y);
+  tft_.setTextSize(1);
+  uint16_t color = C_GREEN;
+  if (batteryPct_ < 20)      color = C_RED;
+  else if (batteryPct_ < 40) color = C_YELLOW;
+  tft_.setTextColor(color, C_BLACK);
+  tft_.print("BAT:");
+  tft_.print(batteryPct_);
+  tft_.print("%");
+}
+
+// LOCK icon goc phai status bar (khoi vuong don gian)
+void TFTDistance::drawLockIcon() {
+  tft_.fillRect(LOCK_X, LOCK_Y, LOCK_W, LOCK_H, C_BLACK);
+  if (locked_) {
+    // Ve icon padlock don gian: hinh chu nhat + arc phia tren
+    tft_.drawRect(LOCK_X + 2, LOCK_Y + 5, 14, 10, C_ORANGE);
+    tft_.drawRect(LOCK_X + 3, LOCK_Y + 6, 12, 8, C_ORANGE);
+    // Vong tren (shackle)
+    tft_.drawRect(LOCK_X + 5, LOCK_Y, 8, 6, C_ORANGE);
+    tft_.drawFastHLine(LOCK_X + 5, LOCK_Y, 8, C_ORANGE);
+  }
+}
+
+// INFO BAR bottom: FPS, STATE, alpha, beta
+void TFTDistance::drawPresetInfoBar() {
+  int y = 240 - INFOBAR_H;
+  tft_.fillRect(0, y, 320, INFOBAR_H, C_BLACK);
+  tft_.setCursor(6, y + 8);
+  tft_.setTextSize(1);
+  tft_.setTextColor(C_WHITE, C_BLACK);
+  tft_.printf("a=%.2f b=%.3f gate=%.1fm", presetAlpha_, presetBeta_, presetGate_);
+  tft_.setCursor(6, y + 20);
+  tft_.setTextColor(C_CYAN, C_BLACK);
+  tft_.print(presetUseCase_);
+}
+
+// PRESET overlay o giua main area
+void TFTDistance::drawPresetOverlay() {
+  // Background yellow
+  tft_.fillRoundRect(OVERLAY_X, OVERLAY_Y, OVERLAY_W, OVERLAY_H, 8, C_YELLOW);
+  tft_.drawRoundRect(OVERLAY_X, OVERLAY_Y, OVERLAY_W, OVERLAY_H, 8, C_BLACK);
+
+  tft_.setTextColor(C_BLACK, C_YELLOW);
+  tft_.setTextSize(2);
+  tft_.setCursor(OVERLAY_X + 20, OVERLAY_Y + 15);
+  tft_.print(presetName_);
+  tft_.printf(" (%d/6)", (int)presetId_ + 1);
+
+  tft_.setTextSize(1);
+  tft_.setCursor(OVERLAY_X + 20, OVERLAY_Y + 50);
+  tft_.printf("a=%.2f b=%.3f", presetAlpha_, presetBeta_);
+  tft_.setCursor(OVERLAY_X + 20, OVERLAY_Y + 70);
+  tft_.print(presetUseCase_);
+}
+
+// FLASH message: text lon o giua
+void TFTDistance::drawFlash() {
+  tft_.fillRoundRect(OVERLAY_X + 40, OVERLAY_Y + 20, OVERLAY_W - 80, 60, 8, C_ORANGE);
+  tft_.drawRoundRect(OVERLAY_X + 40, OVERLAY_Y + 20, OVERLAY_W - 80, 60, 8, C_BLACK);
+  tft_.setTextColor(C_BLACK, C_ORANGE);
+  tft_.setTextSize(2);
+  int text_w = flashMsg_.length() * 12;
+  int cx = (320 - text_w) / 2;
+  tft_.setCursor(cx, OVERLAY_Y + 40);
+  tft_.print(flashMsg_);
+}
+
+// Xoa overlay va redraw main area de tra ve view binh thuong
+void TFTDistance::hideOverlay() {
+  overlayVisible_ = false;
+  tft_.fillRect(OVERLAY_X, OVERLAY_Y, OVERLAY_W, OVERLAY_H, C_BLACK);
+  paintDistanceUI();  // redraw main area
+}
+
+void TFTDistance::hideFlash() {
+  flashVisible_ = false;
+  tft_.fillRect(OVERLAY_X + 40, OVERLAY_Y + 20, OVERLAY_W - 80, 60, C_BLACK);
+  paintDistanceUI();
 }

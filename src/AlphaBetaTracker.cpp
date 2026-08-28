@@ -32,7 +32,8 @@ float AlphaBetaTracker::resolveDtS(uint32_t sampleTimeMs, float fps) const{
     return dtS;
 }
 
-void AlphaBetaTracker::initializeState(float zM, uint32_t sampleTimeMs){
+void AlphaBetaTracker::initializeState(float zM, uint32_t sampleTimeMs,
+                                        EstimatorDecision decision){
     hasState_       = true;
     x_              = zM;
     v_              = cfg_.initRateMps;
@@ -49,9 +50,12 @@ void AlphaBetaTracker::initializeState(float zM, uint32_t sampleTimeMs){
     out_.rejectCount      = rejectCount_;
     out_.predictHoldCount = predictHoldCnt_;
     out_.sampleTimeMs     = sampleTimeMs;
+    // Review#8: caller chi dinh decision (INITIALIZED lan dau, REINITIALIZED khi switch)
+    out_.decision         = decision;
 }
 
-void AlphaBetaTracker::fillOutput(float predictedM, float residualM, bool rejected, uint32_t sampleTimeMs){
+void AlphaBetaTracker::fillOutput(float predictedM, float residualM, bool rejected,
+                                   uint32_t sampleTimeMs, EstimatorDecision decision){
     out_.hasEstimate      = hasState_;
     out_.estimateM        = hasState_ ? x_ : NAN;
     out_.rateMps          = hasState_ ? v_ : NAN;
@@ -61,6 +65,7 @@ void AlphaBetaTracker::fillOutput(float predictedM, float residualM, bool reject
     out_.rejectCount      = rejectCount_;
     out_.predictHoldCount = predictHoldCnt_;
     out_.sampleTimeMs     = sampleTimeMs;
+    out_.decision         = decision;   // Proposal 1
 }
 
 AlphaBetaOutput AlphaBetaTracker::update(const Measurement& m, float fps){
@@ -75,7 +80,8 @@ AlphaBetaOutput AlphaBetaTracker::updateValidMeasurement(float zM, uint32_t samp
         return notifyInvalid(sampleTimeMs, fps);
     }
     if (!hasState_){
-        initializeState(zM, sampleTimeMs);
+        // Review#8: first-lock -> INITIALIZED (khac target-switch)
+        initializeState(zM, sampleTimeMs, EST_DECISION_INITIALIZED);
         return out_;
     }
 
@@ -89,8 +95,10 @@ AlphaBetaOutput AlphaBetaTracker::updateValidMeasurement(float zM, uint32_t samp
         rejectCount_++;
         // Doi muc tieu thuc -> reinit
         if (cfg_.reinitOnSwitch && rejectCount_ >= cfg_.maxReject) {
-            initializeState(zM, sampleTimeMs);
-            fillOutput(xPred, residual, /*rejected=*/true, sampleTimeMs);
+            // Review#8: target-switch -> REINITIALIZED (khac first-lock)
+            initializeState(zM, sampleTimeMs, EST_DECISION_REINITIALIZED);
+            fillOutput(xPred, residual, /*rejected=*/true,
+                       sampleTimeMs, EST_DECISION_REINITIALIZED);
             return out_;
         }
         // B2: predict-only state propagation khi reject
@@ -98,7 +106,8 @@ AlphaBetaOutput AlphaBetaTracker::updateValidMeasurement(float zM, uint32_t samp
         v_ = vPred;
         lastSampleMs_   = sampleTimeMs;
         predictHoldCnt_ = 0;
-        fillOutput(xPred, residual, /*rejected=*/true, sampleTimeMs);
+        fillOutput(xPred, residual, /*rejected=*/true,
+                   sampleTimeMs, EST_DECISION_REJECTED);
         return out_;
     }
 
@@ -107,13 +116,16 @@ AlphaBetaOutput AlphaBetaTracker::updateValidMeasurement(float zM, uint32_t samp
     predictHoldCnt_ = 0;
 
     x_ = xPred + cfg_.alpha * residual;
-    if(cfg_.beta > 0.0f && dtS > cfg_.minDtS){
+    // Fix #11: dung >= thay vi > de update velocity ca khi dt bi clamp bang minDtS.
+    // Truoc do neu resolveDtS() clamp dt = minDtS thi velocity bi bo qua (bug edge case).
+    if(cfg_.beta > 0.0f && dtS >= cfg_.minDtS){
         v_ = vPred + (cfg_.beta / dtS) * residual;
     }else{
         v_ = vPred;
     }
     lastSampleMs_ = sampleTimeMs;
-    fillOutput(xPred, residual, /*rejected=*/false, sampleTimeMs);
+    fillOutput(xPred, residual, /*rejected=*/false,
+               sampleTimeMs, EST_DECISION_ACCEPTED);
     return out_;
 }
 
@@ -121,6 +133,7 @@ AlphaBetaOutput AlphaBetaTracker::notifyInvalid(uint32_t sampleTimeMs, float fps
     if (!hasState_) {
         out_ = AlphaBetaOutput{};
         out_.sampleTimeMs = sampleTimeMs;
+        out_.decision     = EST_DECISION_NONE;   // Proposal 1: chua co state
         return out_;
     }
     const float dtS = resolveDtS(sampleTimeMs, fps);
@@ -134,6 +147,7 @@ AlphaBetaOutput AlphaBetaTracker::notifyInvalid(uint32_t sampleTimeMs, float fps
         x_ = x_ + v_ * dtS;
     }
     lastSampleMs_ = sampleTimeMs;
-    fillOutput(x_, NAN, /*rejected=*/false, sampleTimeMs);
+    fillOutput(x_, NAN, /*rejected=*/false,
+               sampleTimeMs, EST_DECISION_PREDICT_ONLY);
     return out_;
 }

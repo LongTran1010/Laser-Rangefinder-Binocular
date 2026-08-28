@@ -17,11 +17,19 @@
 using PublishLogFn = void (*)(const char* payload);
 
 // Firmware version - tang khi co thay doi quan trong (filter, schema, etc.)
+// Fix #13: uu tien CURRENT_FW_VERSION tu platformio.ini neu co, thong nhat.
+// v1.0.2-UX-v2: them ButtonManager/PresetManager/BatteryMonitor + fix 13 bugs.
 #ifndef FW_VERSION_STR
-#define FW_VERSION_STR "0.3.0"
+  #ifdef CURRENT_FW_VERSION
+    #define FW_VERSION_STR CURRENT_FW_VERSION
+  #else
+    #define FW_VERSION_STR "1.0.2-UX-v2"
+  #endif
 #endif
 // Schema CSV version - tang khi them/xoa cot
-#define LOG_SCHEMA_VERSION 2
+// v2 -> v3: them predict_hold_count (dung cho DT5 verify B4 velocity decay)
+// v3 -> v4: them estimator_decision (Proposal 1 - tach validity va decision)
+#define LOG_SCHEMA_VERSION 4
 
 struct LogContext {
     uint32_t bootId       = 0;

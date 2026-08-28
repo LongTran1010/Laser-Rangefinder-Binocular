@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <math.h>
 #include "MeasurementTypes.h"
+#include "TrackerTypes_v2.h"    // Proposal 1: EstimatorDecision
 
 // =====================================================================
 // AlphaBetaTracker
@@ -60,6 +61,9 @@ struct AlphaBetaOutput{
     uint8_t rejectCount = 0;
     uint8_t predictHoldCount = 0;
     uint32_t sampleTimeMs = 0;
+
+    // Proposal 1: quyet dinh cua tracker cho mau nay
+    EstimatorDecision decision = EST_DECISION_NONE;
 };
 
 class AlphaBetaTracker{
@@ -83,8 +87,12 @@ public:
 
 private:
     float resolveDtS(uint32_t sampleTimeMs, float fps) const;
-    void  initializeState(float zM, uint32_t sampleTimeMs);
-    void  fillOutput(float predictedM, float residualM, bool rejected, uint32_t sampleTimeMs);
+    // Review#8: caller chi dinh INITIALIZED (first lock) hoac REINITIALIZED (target-switch)
+    void  initializeState(float zM, uint32_t sampleTimeMs,
+                          EstimatorDecision decision = EST_DECISION_INITIALIZED);
+    // Proposal 1: them decision vao fillOutput
+    void  fillOutput(float predictedM, float residualM, bool rejected,
+                     uint32_t sampleTimeMs, EstimatorDecision decision);
 
 private:
     AlphaBetaConfig cfg_{};

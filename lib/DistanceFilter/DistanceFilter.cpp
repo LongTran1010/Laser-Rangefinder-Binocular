@@ -22,6 +22,10 @@ float DistanceFilter::median5_() const {
 }
 
 float DistanceFilter::update(float m, bool valid) {
+    // Review#1: reset FSM signal moi lan update()
+    lastGateRejected_ = false;
+    lastReinit_       = false;
+
     //Nếu mẫu không hợp lệ: không thay đổi trạng thái, trả về giá trị hiện tại
     if (!valid) {
         return distEMA_m_;
@@ -36,11 +40,18 @@ float DistanceFilter::update(float m, bool valid) {
 
             if (rejectCount_ < maxReject_) {
                 //coi là nhiễu: bỏ qua, giữ giá trị cũ
+                lastGateRejected_ = true;   // Review#1
                 return distEMA_m_;
             } else {
                 //lệch liên tiếp đủ maxReject mẫu -> coi là mục tiêu mới
-                distEMA_m_   = m;
-                rejectCount_ = 0;
+                distEMA_m_    = m;
+                rejectCount_  = 0;
+                lastReinit_   = true;       // Review#1: target-switch
+                // Review#RG1: chot semantic - rejectedByGate = "raw sample vuot
+                // nguong gate" (khong phai "bi loai bo"). Sample reinit VAN vuot
+                // gate nen flag = true. Field estimatorDecision (REINITIALIZED)
+                // moi la field ket luan "co dung sample hay khong".
+                lastGateRejected_ = true;
                 //reset median buffer quanh giá trị mới
                 for (int i = 0; i < 5; ++i) {
                     ((float*)buff_)[i] = m;

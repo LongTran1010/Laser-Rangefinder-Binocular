@@ -33,6 +33,14 @@ size_t Logger::serializeSnapshot(char* buf,
     formatFloat(gateBuf,  sizeof(gateBuf),  ctx.cfgGateM,            2);
     formatFloat(minDtBuf, sizeof(minDtBuf), ctx.cfgMinDtS,           3);
 
+    // ---------------------------------------------------------
+    // Luu y: cac string literal ADJACENT (khong co dau phay giua)
+    // se duoc preprocessor CONCAT lai thanh 1 format string duy nhat.
+    // TRONG QUA KHU code bi bug: co dau phay giua "...schema_version:%u"
+    // va "}", khien "}" bi coi la ARG dau tien cho %lu -> UB, khong co
+    // closing brace, JSON invalid. Fix bang cach BO dau phay va them
+    // dong "}" adjacent voi phan format truoc do.
+    // ---------------------------------------------------------
     int n = snprintf(
         buf, bufSize,
         "{"
@@ -64,6 +72,8 @@ size_t Logger::serializeSnapshot(char* buf,
         "\"cfg_min_dt_s\":%s,"
         "\"cfg_max_reject\":%u,"
         "\"cfg_preset_id\":%u,"
+        "\"predict_hold_count\":%u,"
+        "\"estimator_decision\":%u,"
         "\"fw_version\":\"" FW_VERSION_STR "\","
         "\"schema_version\":%u"
         "}",
@@ -88,6 +98,8 @@ size_t Logger::serializeSnapshot(char* buf,
         alphaBuf, betaBuf, gateBuf, minDtBuf,
         static_cast<unsigned>(ctx.cfgMaxReject),
         static_cast<unsigned>(ctx.cfgPresetId),
+        static_cast<unsigned>(out.predictHoldCount),
+        static_cast<unsigned>(out.estimatorDecision),
         static_cast<unsigned>(LOG_SCHEMA_VERSION));
 
     return (n > 0 && static_cast<size_t>(n) < bufSize) ? static_cast<size_t>(n) : 0;
