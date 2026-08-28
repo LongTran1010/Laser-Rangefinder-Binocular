@@ -48,6 +48,10 @@ CSV_COLUMNS = [
     "cfg_preset_id",
     # ---- Schema v3 (firmware 0.3.1+): predict-hold diagnostic ----
     "predict_hold_count",
+    # ---- Schema v4 (firmware 1.2.0-UX-v2+): estimator decision (Proposal 1) ----
+    # 0=NONE, 1=ACCEPTED, 2=REJECTED, 3=REINITIALIZED, 4=PREDICT_ONLY,
+    # 5=INITIALIZED (Review#8 - tach first-lock khoi target-switch)
+    "estimator_decision",
     "fw_version",
     "schema_version",
 ]
@@ -143,6 +147,8 @@ def normalize_payload(data: dict) -> dict:
     row["cfg_preset_id"]  = data.get("cfg_preset_id", "")
     # Schema v3: predict_hold_count (dung cho DT5 verify B4 velocity decay)
     row["predict_hold_count"] = data.get("predict_hold_count", "")
+    # Schema v4: estimator_decision (Proposal 1 - tach sensor validity va decision)
+    row["estimator_decision"] = data.get("estimator_decision", "")
     row["fw_version"]     = data.get("fw_version", "")
     row["schema_version"] = data.get("schema_version", "")
     return row
